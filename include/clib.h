@@ -7,6 +7,7 @@
  */
 
 #include <stddef.h>
+#include <string.h>
 
 /* fprintf for fio */
 size_t fio_printf(int fd, const char *format, ...);
