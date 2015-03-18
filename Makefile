@@ -8,10 +8,8 @@ CFLAGS = -fno-common -O0 \
 		 -gdwarf-2 -ffreestanding -g3 \
 		 -mcpu=cortex-m3 -mthumb \
 		 -Wall -Werror \
-		 -Tmain.ld -nostartfiles \
+		 -Tmain.ld \
 		 -DUSER_NAME=\"$(USER)\"
-
-LDFLAGS = -Wl,--start-group -lg -lnosys  -Wl,--end-group
 
 ARCH = CM3
 VENDOR = ST
@@ -76,7 +74,7 @@ $(OUTDIR)/$(TARGET).lst: $(OUTDIR)/$(TARGET).elf
 $(OUTDIR)/$(TARGET).elf: $(OBJ) $(DAT)
 	@echo "    LD      "$@
 	@echo "    MAP     "$(OUTDIR)/$(TARGET).map
-	@$(CROSS_COMPILE)gcc $(CFLAGS) -Wl,-Map=$(OUTDIR)/$(TARGET).map -o $@ $^ $(LDFLAGS)
+	@$(CROSS_COMPILE)gcc $(CFLAGS) -Wl,-Map=$(OUTDIR)/$(TARGET).map -o $@ $^
 
 $(OUTDIR)/%.o: %.c
 	@mkdir -p $(dir $@)

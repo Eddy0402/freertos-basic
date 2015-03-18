@@ -2,7 +2,7 @@ ENTRY(main)
 MEMORY
 {
     FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 128K
-    RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 81K
+    RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 80K
 }
 
 SECTIONS
@@ -36,20 +36,25 @@ SECTIONS
     } >FLASH
 
     /* Initialized data will initially be loaded in FLASH at the end of the .text section. */
+    _sidata = LOADADDR(.data);
     .data :
     {
-        _sidata = .;
         _sdata = .;
+        *(.init_array)
         *(.data)        /* Initialized data */
+        *(.data.*)        /* Initialized data */
         _edata = .;
     } >RAM AT >FLASH
 
     .bss(NOLOAD) : {
         _sbss = .;
+        __bss_start__ = .;
         *(.bss)         /* Zero-filled run time allocate data memory */
+        *(.bss.*)         /* Zero-filled run time allocate data memory */
         _ebss = .;
+        __bss_end__ = .;
         end = .;        /* For checking stack-heap collision detection from sbrk() */
-    } >RAM
+    } >RAM AT >RAM
 
     /* Remove information from the standard libraries */
     /DISCARD/ :
