@@ -18,43 +18,12 @@ enum KeyName{ESC=27, BACKSPACE=127};
 
 /* Imple */
 static ssize_t stdin_read(void * opaque, void * buf, size_t count) {
-    int i=0, endofline=0, last_chr_is_esc;
+    int i=0;
     char *ptrbuf=buf;
-    char ch;
-    while(i < count&&endofline!=1){
-	ptrbuf[i]=recv_byte();
-	switch(ptrbuf[i]){
-		case '\r':
-		case '\n':
-			ptrbuf[i]='\0';
-			endofline=1;
-			break;
-		case '[':
-			if(last_chr_is_esc){
-				last_chr_is_esc=0;
-				ch=recv_byte();
-				if(ch>=1&&ch<=6){
-					ch=recv_byte();
-				}
-				continue;
-			}
-		case ESC:
-			last_chr_is_esc=1;
-			continue;
-		case BACKSPACE:
-			last_chr_is_esc=0;
-			if(i>0){
-				send_byte('\b');
-				send_byte(' ');
-				send_byte('\b');
-				--i;
-			}
-			continue;
-		default:
-			last_chr_is_esc=0;
-	}
-	send_byte(ptrbuf[i]);
-	++i;
+    while(i < count){
+        ptrbuf[i]=recv_byte();
+        //send_byte(ptrbuf[i]);
+        ++i;
     }
     return i;
 }
@@ -62,10 +31,10 @@ static ssize_t stdin_read(void * opaque, void * buf, size_t count) {
 static ssize_t stdout_write(void * opaque, const void * buf, size_t count) {
     int i;
     const char * data = (const char *) buf;
-    
+
     for (i = 0; i < count; i++)
         send_byte(data[i]);
-    
+
     return count;
 }
 

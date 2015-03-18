@@ -42,7 +42,7 @@
 #include "linenoise.h"
 
 #define LINENOISE_DEFAULT_HISTORY_MAX_LEN 10
-#define LINENOISE_MAX_LINE                64
+#define LINENOISE_MAX_LINE                61
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 
@@ -102,53 +102,9 @@ void linenoiseSetMultiLine(int ml) {
     mlmode = ml;
 }
 
-/* Use the ESC [6n escape sequence to query the horizontal cursor position
- * and return it. On error -1 is returned, on success the position of the
- * cursor. */
-static int getCursorPosition(int ifd, int ofd) {
-    char buf[32];
-    int cols, rows;
-    unsigned int i = 0;
-    /* Report cursor location */
-    if (fio_write(ofd, "\x1b[6n", 4) != 4) return -1;
-    /* Read the response: ESC [ rows ; cols R */
-    while (i < sizeof(buf)-1) {
-        if (fio_read(ifd,buf+i,1) != 1) break;
-        if (buf[i] == 'R') break;
-        i++;
-    }
-    buf[i] = '\0';
-    /* Parse it. */
-    if (buf[0] != ESC || buf[1] != '[') return -1;
-    if (sscanf(buf+2,"%d;%d",&rows,&cols) != 2) return -1;
-    return cols;
-}
-/* Try to get the number of columns in the current terminal, or assume 80
- * if it fails. */
-static int getColumns(int ifd, int ofd) {
-    /* Get the initial position so we can restore it later. */
-    int start = getCursorPosition(ifd,ofd);
-    if (start == -1) goto failed;
-    /* Go to right margin and get position. */
-    if (fio_write(ofd,"\x1b[999C",6) != 6) goto failed;
-    int cols = getCursorPosition(ifd,ofd);
-    if (cols == -1) goto failed;
-    /* Restore position. */
-    if (cols > start) {
-        char seq[32];
-        snprintf(seq,32,"\x1b[%dD",cols-start);
-        if (fio_write(ofd,seq,strlen(seq)) == -1) {
-            /* Can't recover... */
-        }
-    }
-    return cols;
-failed: // Assume 80 if failed to get number of columns
-    return 80;
-}
-
 /* Clear the screen. Used to handle ctrl+l */
 void linenoiseClearScreen(void) {
-    if (fio_write(STDOUT_FILENO,"\x1b[H\x1b[2J",7) <= 0) {
+    if (fio_write(1,"\x1b[H\x1b[2J",7) <= 0) {
         /* nothing to do, just to avoid warning. */
     }
 }
@@ -513,7 +469,7 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
     l.plen = strlen(prompt);
     l.oldpos = l.pos = 0;
     l.len = 0;
-    l.cols = getColumns(stdin_fd, stdout_fd);
+    l.cols = 80;
     l.maxrows = 0;
     l.history_index = 0;
     /* Buffer starts empty. */
@@ -548,7 +504,7 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
             case CTRL_C: /* ctrl-c */
                 return -1;
             case BACKSPACE: /* backspace */
-            case 8: /* ctrl-h */
+            case CTRL_H: /* ctrl-h */
                 linenoiseEditBackspace(&l);
                 break;
             case CTRL_D: /* ctrl-d, remove char at right of cursor, or if the
@@ -690,7 +646,6 @@ static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
     }
     /* Interactive editing. */
     count = linenoiseEdit(STDIN_FILENO, STDOUT_FILENO, buf, buflen, prompt);
-    fio_printf(1, "\n");
     return count;
 }
 /* The high level function that is the main API of the linenoise library.
@@ -698,14 +653,14 @@ static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
  * for a blacklist of stupid terminals, and later either calls the line
  * editing function or uses dummy fgets() so that you will be able to type
  * something even in the most desperate of the conditions. */
-char *linenoise(const char *prompt, int *count) {
+char *linenoise(const char *prompt, ssize_t *count) {
     char buf[LINENOISE_MAX_LINE];
 
     *count = linenoiseRaw(buf,LINENOISE_MAX_LINE,prompt);
-    if (*count == -1) return NULL;
-
+    if (*count <= 0) return NULL;
     char *ret = pvPortMalloc(*count);
     strncpy(ret, buf, *count);
+    ret[*count] = 0;
     return ret;
 }
 /* ================================ History ================================= */
