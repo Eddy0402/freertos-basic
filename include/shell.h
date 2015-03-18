@@ -1,10 +1,11 @@
 #ifndef SHELL_H
 #define SHELL_H
 
+void command_prompt(void *pvParameters);
 int parse_command(char *str, char *argv[]);
 
 typedef void cmdfunc(int, char *[]);
 
-cmdfunc *do_command(const char *str);
+cmdfunc *find_command(const char *str);
 
 #endif

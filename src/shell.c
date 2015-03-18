@@ -8,6 +8,13 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "host.h"
+#include "linenoise.h"
+
+/* The default name, the actual name is define in makefile use -DUSER_NAME*/
+#ifndef USER_NAME
+#define USER_NAME user
+#endif
+
 
 typedef struct {
 	const char *name;
@@ -191,13 +198,37 @@ void _command(int n, char *argv[]){
     fio_printf(1, "\r\n");
 }
 
-cmdfunc *do_command(const char *cmd){
-
-	int i;
-
-	for(i=0; i<sizeof(cl)/sizeof(cl[0]); ++i){
-		if(strcmp(cl[i].name, cmd)==0)
-			return cl[i].fptr;
-	}
-	return NULL;	
+cmdfunc *find_command(const char *cmd){
+    for(int i = 0; i<sizeof(cl)/sizeof(cl[0]); ++i){
+        if(strcmp(cl[i].name, cmd)==0)
+            return cl[i].fptr;
+    }
+    return NULL;	
 }
+
+void command_prompt(void *pvParameters)
+{
+    char *line;
+    char *argv[20];
+    char hint[] = USER_NAME "@" USER_NAME "-STM32:~$ ";
+    ssize_t len;
+
+    fio_printf(1, "\rWelcome to FreeRTOS Shell\r\n");
+    while(1){
+        line = linenoise(hint , &len);
+        if (len > 0) {
+            int n = parse_command(line, argv);
+            cmdfunc *fptr = find_command(argv[0]);
+            if(fptr != NULL){
+                fptr(n, argv);
+            }else{
+                fio_printf(2, "\r\n\"%s\" command not found.\r\n", line);
+            }
+            linenoiseHistoryAdd(line); /* Add to the history. */
+            vPortFree(line);
+        }else{
+            fio_printf(2, "\r\n");
+        }
+    }
+}
+
