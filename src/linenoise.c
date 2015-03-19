@@ -97,6 +97,17 @@ enum KeyName{
 int linenoiseHistoryAdd(const char *line);
 static void refreshLine(struct linenoiseState *l);
 
+/* warpper for pvPortMalloc(), return a magic number if try to allocate 0 byte */
+static void *__malloc(size_t size){
+    if(size) return pvPortMalloc(size);
+    else return (void *)0x1;
+}
+
+static void __free(void *ptr){
+    if(ptr != (void *)0x1) vPortFree(ptr);
+    /* if equal to 0x1, nothing to do */
+}
+
 /* Set if to use or not the multi line mode. */
 void linenoiseSetMultiLine(int ml) {
     mlmode = ml;
@@ -111,12 +122,12 @@ void linenoiseClearScreen(void) {
 
 static void linenoiseBeep(void) { }
 
-static void vPortFreeCompletions(linenoiseCompletions *lc) {
+static void __freeCompletions(linenoiseCompletions *lc) {
     size_t i;
     for (i = 0; i < lc->len; i++)
-        vPortFree(lc->cvec[i]);
+        __free(lc->cvec[i]);
     if (lc->cvec != NULL)
-        vPortFree(lc->cvec);
+        __free(lc->cvec);
 }
 
 /* This is an helper function for linenoiseEdit() and is called when the
@@ -149,7 +160,7 @@ static int completeLine(struct linenoiseState *ls) {
             }
             nread = fio_read(ls->ifd,&c,1);
             if (nread <= 0) {
-                vPortFreeCompletions(&lc);
+                __freeCompletions(&lc);
                 return -1;
             }
             switch(c) {
@@ -172,7 +183,7 @@ static int completeLine(struct linenoiseState *ls) {
             }
         }
     }
-    vPortFreeCompletions(&lc);
+    __freeCompletions(&lc);
     return c; /* Return last read character */
 }
 
@@ -187,13 +198,13 @@ void linenoiseSetCompletionCallback(linenoiseCompletionCallback *fn) {
 void linenoiseAddCompletion(linenoiseCompletions *lc, const char *str) {
     size_t len = strlen(str);
     char *copy, **cvec;
-    copy = pvPortMalloc(len+1);
+    copy = __malloc(len+1);
     if (copy == NULL) return;
     memcpy(copy,str,len+1);
-    vPortFree(lc->cvec);
-    cvec = pvPortMalloc(sizeof(char*)*(lc->len+1));
+    __free(lc->cvec);
+    cvec = __malloc(sizeof(char*)*(lc->len+1));
     if (cvec == NULL) {
-        vPortFree(copy);
+        __free(copy);
         return;
     }
     lc->cvec = cvec;
@@ -213,28 +224,26 @@ static void abInit(struct abuf *ab) {
     ab->len = 0;
 }
 static void abAppend(struct abuf *ab, const char *s, int len) {
-    vPortFree(ab->b);
-    char *new = pvPortMalloc(ab->len+len);
+    __free(ab->b);
+    char *new = __malloc(ab->len+len);
     if (new == NULL) return;
     memcpy(new+ab->len,s,len);
     ab->b = new;
     ab->len += len;
 }
 static void abFree(struct abuf *ab) {
-    vPortFree(ab->b);
+    __free(ab->b);
 }
 /* Single line low level line refresh.
  *
  * Rewrite the currently edited line accordingly to the buffer content,
  * cursor position, and number of columns of the terminal. */
 static void refreshSingleLine(struct linenoiseState *l) {
-    char seq[64];
     size_t plen = strlen(l->prompt);
     int fd = l->ofd;
     char *buf = l->buf;
     size_t len = l->len;
     size_t pos = l->pos;
-    struct abuf ab;
     while((plen+pos) >= l->cols) {
         buf++;
         len--;
@@ -243,21 +252,12 @@ static void refreshSingleLine(struct linenoiseState *l) {
     while (plen+len > l->cols) {
         len--;
     }
-    abInit(&ab);
-    /* Cursor to left edge */
-    snprintf(seq,64,"\r");
-    abAppend(&ab,seq,strlen(seq));
-    /* Write the prompt and the current buffer content */
-    abAppend(&ab,l->prompt,strlen(l->prompt));
-    abAppend(&ab,buf,len);
-    /* Erase to right */
-    snprintf(seq,64,"\x1b[0K");
-    abAppend(&ab,seq,strlen(seq));
+    // Clear last line
+    fio_write(fd, "\x1b[2K\r", 5);
+    fio_write(fd, l->prompt, plen);
+    fio_write(fd, buf, len);
     /* Move cursor to original position. */
-    snprintf(seq,64,"\r\x1b[%dC", (int)(pos+plen));
-    abAppend(&ab,seq,strlen(seq));
-    if (fio_write(fd,ab.b,ab.len) == -1) {} /* Can't recover from write error. */
-    abFree(&ab);
+    fio_printf(fd, "\r\x1b[%dC", (int)(pos+plen));
 }
 /* Multi line low level line refresh.
  *
@@ -395,9 +395,9 @@ void linenoiseEditHistoryNext(struct linenoiseState *l, int dir) {
     if (history_len > 1) {
         /* Update the current history entry before to
          * overwrite it with the next one. */
-        vPortFree(history[history_len - 1 - l->history_index]);
+        __free(history[history_len - 1 - l->history_index]);
         size_t buflen = strlen(l->buf);
-        history[history_len - 1 - l->history_index] = pvPortMalloc(buflen);
+        history[history_len - 1 - l->history_index] = __malloc(buflen);
         strncpy(history[history_len - 1 - l->history_index], l->buf, buflen);
         /* Show the new entry */
         l->history_index += (dir == LINENOISE_HISTORY_PREV) ? 1 : -1;
@@ -498,7 +498,7 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
         switch(c) {
             case CR: /* enter */
                 history_len--;
-                vPortFree(history[history_len]);
+                __free(history[history_len]);
                 if (mlmode) linenoiseEditMoveEnd(&l);
                 return (int)l.len;
             case CTRL_C: /* ctrl-c */
@@ -513,7 +513,7 @@ static int linenoiseEdit(int stdin_fd, int stdout_fd, char *buf, size_t buflen, 
                     linenoiseEditDelete(&l);
                 } else {
                     history_len--;
-                    vPortFree(history[history_len]);
+                    __free(history[history_len]);
                     return -1;
                 }
                 break;
@@ -658,7 +658,7 @@ char *linenoise(const char *prompt, ssize_t *count) {
 
     *count = linenoiseRaw(buf,LINENOISE_MAX_LINE,prompt);
     if (*count <= 0) return NULL;
-    char *ret = pvPortMalloc(*count);
+    char *ret = __malloc(*count);
     strncpy(ret, buf, *count);
     ret[*count] = 0;
     return ret;
@@ -676,7 +676,7 @@ int linenoiseHistoryAdd(const char *line) {
     if (history_max_len == 0) return 0;
     /* Initialization on first call. */
     if (history == NULL) {
-        history = pvPortMalloc(sizeof(char*)*history_max_len);
+        history = __malloc(sizeof(char*)*history_max_len);
         if (history == NULL) return 0;
         memset(history,0,(sizeof(char*)*history_max_len));
     }
@@ -685,11 +685,11 @@ int linenoiseHistoryAdd(const char *line) {
     /* Add an heap allocated copy of the line in the history.
      * If we reached the max length, remove the older line. */
     size_t linelen = strlen(line);
-    linecopy = pvPortMalloc(linelen);
+    linecopy = __malloc(linelen);
     strncpy(linecopy, line, linelen);
     if (!linecopy) return 0;
     if (history_len == history_max_len) {
-        vPortFree(history[0]);
+        __free(history[0]);
         memmove(history,history+1,sizeof(char*)*(history_max_len-1));
         history_len--;
     }
@@ -706,17 +706,17 @@ int linenoiseHistorySetMaxLen(int len) {
     if (len < 1) return 0;
     if (history) {
         int tocopy = history_len;
-        new = pvPortMalloc(sizeof(char*)*len);
+        new = __malloc(sizeof(char*)*len);
         if (new == NULL) return 0;
-        /* If we can't copy everything, vPortFree the elements we'll not use. */
+        /* If we can't copy everything, __free the elements we'll not use. */
         if (len < tocopy) {
             int j;
-            for (j = 0; j < tocopy-len; j++) vPortFree(history[j]);
+            for (j = 0; j < tocopy-len; j++) __free(history[j]);
             tocopy = len;
         }
         memset(new,0,sizeof(char*)*len);
         memcpy(new,history+(history_len-tocopy), sizeof(char*)*tocopy);
-        vPortFree(history);
+        __free(history);
         history = new;
     }
     history_max_len = len;
@@ -757,12 +757,12 @@ int linenoiseHistoryLoad(const char *filename) {
 }
 /* Free the history, but does not reset it. Only used when we have to
  * exit() to avoid memory leaks are reported by valgrind & co. */
-static void vPortFreeHistory(void) {
+static void __freeHistory(void) {
     if (history) {
         int j;
         for (j = 0; j < history_len; j++)
-            vPortFree(history[j]);
-        vPortFree(history);
+            __free(history[j]);
+        __free(history);
     }
 }
 #endif

@@ -217,6 +217,7 @@ void command_prompt(void *pvParameters)
     while(1){
         line = linenoise(hint , &len);
         if (len > 0) {
+            linenoiseHistoryAdd(line); /* Add to the history. */
             int n = parse_command(line, argv);
             cmdfunc *fptr = find_command(argv[0]);
             if(fptr != NULL){
@@ -224,7 +225,6 @@ void command_prompt(void *pvParameters)
             }else{
                 fio_printf(2, "\r\n\"%s\" command not found.\r\n", line);
             }
-            linenoiseHistoryAdd(line); /* Add to the history. */
             vPortFree(line);
         }else{
             fio_printf(2, "\r\n");
