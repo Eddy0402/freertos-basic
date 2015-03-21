@@ -31,6 +31,7 @@ void help_command(int, char **);
 void host_command(int, char **);
 void mmtest_command(int, char **);
 void test_command(int, char **);
+void new_command(int, char **);
 void _command(int, char **);
 
 int parse_command_args(char *str, char *argv[]);
@@ -47,6 +48,7 @@ command cmd_list[]={
     MKCL(mmtest, "heap memory allocation test"),
     MKCL(help, "help"),
     MKCL(test, "test new function"),
+    MKCL(new, "Start a new task and output to host"),
     MKCL(, ""),
 };
 
@@ -200,6 +202,33 @@ int find_command_id(const char *cmd){
             return i;
     }
     return -1;
+}
+
+static void task_warpper(void *args)
+{
+    // Not yet implement
+    while(1);
+    vTaskDelete(NULL);
+}
+
+void new_command(int argc, char **argv)
+{
+    int cmdid;
+    if(argc >= 2 && (cmdid = find_command_id(argv[1])) != -1){
+        portBASE_TYPE ret = xTaskCreate(
+                task_warpper,
+                (const signed char *)cmd_list[cmdid].name,
+                128, /* stack size */
+                NULL, // Not yet implement arguments
+                uxTaskPriorityGet(NULL) - 1,
+                NULL
+                );
+        if(ret != pdPASS){
+            fio_printf(2, "Something wrong!\r\n");
+        }
+    }else{
+        fio_printf(2, "Command not found, Task cannot be created.\r\n");
+    }
 }
 
 void command_prompt(void *pvParameters)
