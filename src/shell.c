@@ -7,6 +7,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
 #include "host.h"
 #include "linenoise.h"
 
@@ -107,11 +108,20 @@ int filedump(const char *filename){
 }
 
 void ps_command(int n, char *argv[]){
-    signed char buf[1024];
-    vTaskList(buf);
-    fio_printf(1, "Name          State   Priority  Stack  Num\n\r");
-    fio_printf(1, "*******************************************\n\r");
-    fio_printf(1, "%s\r\n", buf + 2);	
+    static xSemaphoreHandle ps_sem;
+    if(ps_sem == NULL){
+        ps_sem = xSemaphoreCreateMutex();
+    }
+    static signed char buf[1024];
+    if( pdTRUE == xSemaphoreTake(ps_sem, 100)){ // Prevent buffer to be overwrite
+        vTaskList(buf);
+        fio_printf(1, "Name          State   Priority  Stack  Num\n\r");
+        fio_printf(1, "*******************************************\n\r");
+        fio_printf(1, "%s\r\n", buf + 2);	
+        xSemaphoreGive(ps_sem);
+    }else{
+        fio_printf(2, "cannot obtain ps_sem\r\n");
+    }
 }
 
 void cat_command(int n, char *argv[]){
@@ -224,7 +234,7 @@ void new_command(int argc, char **argv)
                 NULL
                 );
         if(ret != pdPASS){
-            fio_printf(2, "Something wrong!\r\n");
+            fio_printf(2, "No enough memory!\r\n");
         }
     }else{
         fio_printf(2, "Command not found, Task cannot be created.\r\n");
