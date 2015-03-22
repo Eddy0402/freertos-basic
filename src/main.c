@@ -86,12 +86,13 @@ char recv_byte()
 
 void system_logger(void *pvParameters)
 {
-    signed char buf[128];
-    char output[512] = {0};
+    static signed portCHAR output[512] = {0};
     char *tag = "\nName          State   Priority  Stack  Num\n*******************************************\n";
     int handle, error;
-    const portTickType xDelay = 100000 / 100;
+    const portTickType xDelay = 5 * 100;
 
+    host_action(SYS_SYSTEM, "mkdir -p output");
+    host_action(SYS_SYSTEM, "touch output");
     handle = host_action(SYS_OPEN, "output/syslog", 4);
     if(handle == -1) {
         fio_printf(1, "Open file error!\n");
@@ -99,26 +100,21 @@ void system_logger(void *pvParameters)
     }
 
     while(1) {
-        memcpy(output, tag, strlen(tag));
-        error = host_action(SYS_WRITE, handle, (void *)output, strlen(output));
+        error = host_action(SYS_WRITE, handle, (void *)tag, strlen(tag));
         if(error != 0) {
             fio_printf(1, "Write file error! Remain %d bytes didn't write in the file.\n\r", error);
-            host_action(SYS_CLOSE, handle);
-            return;
+            break;
         }
-        vTaskList(buf);
-
-        memcpy(output, (char *)(buf + 2), strlen((char *)buf) - 2);
-
-        error = host_action(SYS_WRITE, handle, (void *)buf, strlen((char *)buf));
+        vTaskList(output);
+        error = host_action(SYS_WRITE, handle, output + 2, strlen((char *)output) - 2);
         if(error != 0) {
             fio_printf(1, "Write file error! Remain %d bytes didn't write in the file.\n\r", error);
-            host_action(SYS_CLOSE, handle);
-            return;
+            break;
         }
         vTaskDelay(xDelay);
     }
     host_action(SYS_CLOSE, handle);
+    vTaskDelete(NULL);
 }
 
 int main()
@@ -145,12 +141,10 @@ int main()
             (signed portCHAR *) "CLI",
             512 /* stack size */, NULL, tskIDLE_PRIORITY + 2, NULL);
 
-#if 0
     /* Create a task to record system log. */
     xTaskCreate(system_logger,
             (signed portCHAR *) "Logger",
-            1024 /* stack size */, NULL, tskIDLE_PRIORITY + 1, NULL);
-#endif
+            256 /* stack size */, NULL, tskIDLE_PRIORITY + 1, NULL);
 
     /* Start running the tasks. */
     vTaskStartScheduler();
