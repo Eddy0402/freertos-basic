@@ -214,23 +214,34 @@ int find_command_id(const char *cmd){
     return -1;
 }
 
-static void task_warpper(void *args)
+struct task_args{
+    int argc;
+    int command_id;
+    char **argv;
+};
+void send_byte(char);
+static void task_warpper(void *opaque)
 {
-    // Not yet implement
-    while(1);
+    struct task_args *args = (struct task_args*)opaque;
+    cmd_list[args->command_id].fptr(args->argc, args->argv);
     vTaskDelete(NULL);
 }
 
 void new_command(int argc, char **argv)
 {
     int cmdid;
-    if(argc >= 2 && (cmdid = find_command_id(argv[1])) != -1){
+    if(argc > 1 && (cmdid = find_command_id(argv[1])) != -1){
+        struct task_args *param = pvPortMalloc(sizeof(struct task_args));
+        param->argc = argc - 1;
+        param->command_id = cmdid;
+        param->argv = argv + 1;
+#define xTaskCreate( pvTaskCode, pcName, usStackDepth, pvParameters, uxPriority, pxCreatedTask ) xTaskGenericCreate( ( pvTaskCode ), ( pcName ), ( usStackDepth ), ( pvParameters ), ( uxPriority ), ( pxCreatedTask ), ( NULL ), ( NULL ) )
         portBASE_TYPE ret = xTaskCreate(
                 task_warpper,
                 (const signed char *)cmd_list[cmdid].name,
-                128, /* stack size */
-                NULL, // Not yet implement arguments
-                uxTaskPriorityGet(NULL) - 1,
+                512, /* stack size */
+                param,
+                tskIDLE_PRIORITY + 9,
                 NULL
                 );
         if(ret != pdPASS){
