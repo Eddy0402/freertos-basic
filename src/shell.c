@@ -235,7 +235,6 @@ void new_command(int argc, char **argv)
         param->argc = argc - 1;
         param->command_id = cmdid;
         param->argv = argv + 1;
-#define xTaskCreate( pvTaskCode, pcName, usStackDepth, pvParameters, uxPriority, pxCreatedTask ) xTaskGenericCreate( ( pvTaskCode ), ( pcName ), ( usStackDepth ), ( pvParameters ), ( uxPriority ), ( pxCreatedTask ), ( NULL ), ( NULL ) )
         portBASE_TYPE ret = xTaskCreate(
                 task_warpper,
                 (const signed char *)cmd_list[cmdid].name,
